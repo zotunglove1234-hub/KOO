@@ -41,7 +41,6 @@ src/theme.ts          colours, spacing, typography tokens
 assets/               icons, splash art, product photography
 supabase/             SQL schema to paste into the Supabase dashboard
 scripts/              APK build, Supabase connectivity checks, asset prep
-website/              (separate folder) public landing + download page
 ```
 
 There is no `public/` folder: static files for the app live in `assets/`, and Expo serves the web build
@@ -92,6 +91,8 @@ Both scripts print masked status lines only — they never echo key values.
 | `npm run lint` | Expo flat ESLint config over `src` |
 | `npm run check:supabase` | Verify Supabase reachability |
 | `npm run check:chat` | Same, plus assert the chat tables exist |
+| `npm run export:web` | Static web build into `dist/` |
+| `npm run serve:web` | Serve `dist/` with an SPA fallback (`--port 5000` to move it) |
 
 `bash scripts/build-apk.sh` produces a release APK with a local Android toolchain (Gradle 9.4.1, JDK 17,
 Android SDK) instead of a cloud build. `VARIANT=debug`, `ABIS=…`, `CLEAN=1` and `FORCE_PREBUILD=1` modify
@@ -101,11 +102,23 @@ it; the script header documents the repairs it applies and the OneDrive/antiviru
 
 ```bash
 npx expo export --platform web   # static site written to dist/
+npm run serve:web                # preview it at http://localhost:8081
 ```
 
-`dist/` is a self-contained static bundle that any static host can serve. Because the app uses client-side
-routing with AsyncStorage, serve it with an SPA fallback (rewrite unknown paths to `index.html`) or the deep
-links will 404.
+The export is a self-contained static site: one pre-rendered HTML file per route (18 of them, including
+`index.html`, `cart.html`, `search.html`, `login.html`, `settings.html` and the chat/order/product screens)
+plus hashed JS bundles under `_expo/static/js/web/` and every image and font under `assets/`. Serve `dist/`
+from any static host — Netlify, Vercel, Cloudflare Pages, S3, GitHub Pages, or a plain nginx `root`.
+
+Two hosting rules:
+
+- The app navigates client-side, so unknown paths must fall back to `index.html`. Without that, refreshing on
+  `/product/<id>` returns 404 (the pre-rendered file for a dynamic route only exists for its literal
+  `[id]` form). `scripts/serve-web.mjs` does this locally; on Netlify add a `_redirects` file with
+  `/* /index.html 200`, on Vercel a `rewrites` rule, on Cloudflare Pages a 404 handler, on S3+CloudFront a
+  custom 404 response pointing at `/index.html`.
+- `EXPO_PUBLIC_*` values are baked into the bundles at export time, so the web build carries the same
+  publishable key as the APK. Re-export after changing `.env`.
 
 ## Notes and current limits
 

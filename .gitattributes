@@ -1,0 +1,28 @@
+# Normalise line endings in the repository (LF) and pin what a checkout gets,
+# because this machine's git sets core.autocrlf=true globally.
+* text=auto
+
+# Shell scripts must stay LF: Git Bash cannot run a CRLF script, and
+# scripts/build-apk.sh is how the Android APK is produced.
+*.sh text eol=lf
+
+*.js text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.sql text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.apk binary
+*.aab binary
+*.jks binary
