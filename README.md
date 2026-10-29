@@ -110,6 +110,10 @@ The export is a self-contained static site: one pre-rendered HTML file per route
 plus hashed JS bundles under `_expo/static/js/web/` and every image and font under `assets/`. Serve `dist/`
 from any static host — Netlify, Vercel, Cloudflare Pages, S3, GitHub Pages, or a plain nginx `root`.
 
+`dist/` is committed to this repository on purpose, so the site can be served straight from the checkout
+(choose `main` / `dist` as the GitHub Pages source). Regenerate it with `npm run export:web` and commit the
+result in the same change as the code it came from.
+
 Two hosting rules:
 
 - The app navigates client-side, so unknown paths must fall back to `index.html`. Without that, refreshing on

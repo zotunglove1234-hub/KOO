@@ -1,13 +1,19 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
-node_modules/
+# dependencies — anchored to the repo root on purpose. Metro copies icon and
+# font files to dist/assets/node_modules/, and those belong to the committed
+# web build, so a floating `node_modules/` rule would silently drop them.
+/node_modules/
 
 # Expo
 .expo/
-dist/
 web-build/
 expo-env.d.ts
+
+# dist/ is NOT ignored on purpose: the exported web build (`npm run export:web`)
+# is committed so the site can be served straight from the repository. It also
+# holds the publishable Supabase key that Expo inlines at build time — the same
+# value already ships inside the APK. Re-run the export and commit together.
 
 # Native
 .kotlin/
