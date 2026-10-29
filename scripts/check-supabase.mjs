@@ -205,13 +205,18 @@ if (arg) {
   console.log('  table queries ...... skipped (no table assumed). Pass --probe-table=<name> to try one.');
 }
 
-// 6. Optional: confirm the buyer<->seller chat schema landed. Read-only, and it
-//    only asks for the two tables `supabase/koo-chat-schema.sql` creates, so it
-//    answers "did my paste work?" without needing a secret key.
-if (process.argv.includes('--expect-chat')) {
-  for (const table of ['koo_conversations', 'koo_messages']) {
+// 6. Optional: confirm the pasted schema files actually landed. Read-only, and it
+//    only asks for the tables those files create, so it answers "did my paste
+//    work?" without needing a secret key.
+const expectedTables = [
+  ...(process.argv.includes('--expect-chat') ? [['chat', 'koo_conversations'], ['chat', 'koo_messages']] : []),
+  ...(process.argv.includes('--expect-profile') ? [['profile', 'koo_profiles']] : []),
+];
+
+if (expectedTables.length > 0) {
+  for (const [label, table] of expectedTables) {
     await probe(
-      `chat table "${table}"`,
+      `${label} table "${table}"`,
       `/rest/v1/${table}?select=*&limit=1`,
       (body, res) =>
         res.status === 200
@@ -230,7 +235,9 @@ if (process.argv.includes('--expect-chat')) {
     );
   }
 } else {
-  console.log('  chat schema .......... skipped. Pass --expect-chat after pasting supabase/koo-chat-schema.sql.');
+  console.log(
+    '  schema tables ........ skipped. Pass --expect-chat / --expect-profile after pasting the SQL files.'
+  );
 }
 
 console.log('\nResults:');

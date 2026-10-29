@@ -6,9 +6,18 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { Screen, ScreenHeader } from '@/components/Screen';
+import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { useI18n } from '@/i18n';
-import { buildOrder, defaultAddress, nextOrderId, persistOrder, type OrderLine } from '@/lib/orders';
+import {
+  addressFromProfile,
+  buildOrder,
+  defaultAddress,
+  nextOrderId,
+  persistOrder,
+  type OrderLine,
+} from '@/lib/orders';
+import { displayNameFor } from '@/lib/profile';
 import { formatPrice } from '@/lib/format';
 import { colors, currency, radius, spacing, typography } from '@/theme';
 
@@ -31,6 +40,7 @@ type PaymentId = (typeof paymentMethods)[number]['id'];
 
 export default function CheckoutScreen() {
   const { items, totals, clear, hydrated } = useCart();
+  const { profile, status, user } = useAuth();
   const { t } = useI18n();
   const [delivery, setDelivery] = useState<(typeof deliveryMethods)[number]['id']>('standard');
   const [payment, setPayment] = useState<PaymentId>('wallet');
@@ -74,7 +84,17 @@ export default function CheckoutScreen() {
     }
   };
 
-  const address = defaultAddress();
+  /**
+   * Signed-in shoppers check out with their saved profile. Visitors keep the
+   * storefront sample so the card is never blank before they register.
+   */
+  const signedIn = status === 'signedIn' && Boolean(user);
+  const address = useMemo(
+    () => (signedIn ? addressFromProfile(profile, displayNameFor(profile, user)) : defaultAddress()),
+    [profile, signedIn, user]
+  );
+  const addressCityLine = [address.line1, address.city].filter(Boolean).join(', ');
+  const addressIncomplete = signedIn && (!address.city || !address.phone);
 
   const placeOrder = async () => {
     if (items.length === 0) return;
@@ -126,10 +146,13 @@ export default function CheckoutScreen() {
           <Text style={styles.cardTitle}>{t.checkout.deliveryAddress}</Text>
         </View>
         <Text style={styles.addressName}>{address.fullName}</Text>
-        <Text style={styles.addressLine}>
-          {address.line1}, {address.city}
-        </Text>
-        <Text style={styles.addressLine}>{address.phone}</Text>
+        {addressCityLine ? <Text style={styles.addressLine}>{addressCityLine}</Text> : null}
+        {address.phone ? <Text style={styles.addressLine}>{address.phone}</Text> : null}
+        {signedIn ? (
+          <Text style={styles.addressNote}>
+            {addressIncomplete ? t.checkout.addressIncomplete : t.checkout.addressFromProfile}
+          </Text>
+        ) : null}
       </View>
 
       <Text style={styles.sectionTitle}>{t.checkout.deliveryMethod}</Text>
@@ -312,6 +335,7 @@ const styles = StyleSheet.create({
   cardTitle: { ...typography.subtitle, fontSize: 15 },
   addressName: { ...typography.bodyStrong },
   addressLine: { ...typography.caption, lineHeight: 18 },
+  addressNote: { ...typography.tiny, color: colors.brandDark, marginTop: 4 },
   sectionTitle: { ...typography.subtitle, marginTop: spacing.xl, marginBottom: spacing.sm },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
   optionBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },

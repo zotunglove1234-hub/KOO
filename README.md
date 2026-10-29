@@ -10,12 +10,15 @@ Current version: **1.0.1** (Android `versionCode 2`).
 
 - **Catalogue and discovery** — product cards, category chips, search, sort and price filters, product
   detail pages with option groups (colour/size), stock and shipping state.
-- **Cart and checkout** — quantity stepper, persisted cart, address form, payment method choice
-  (wallet / card / cash on delivery), totals with shipping and tax.
+- **Cart and checkout** — quantity stepper, persisted cart, delivery address (from the signed-in profile,
+  or the storefront sample for visitors), payment method choice (wallet / card / cash on delivery), totals
+  with shipping and tax.
 - **Orders** — order placement plus an order list and receipt screen with status and ETA.
 - **Accounts** — email + password sign-up and sign-in backed by Supabase Auth (PKCE, session persisted in
   AsyncStorage, automatic token refresh). Auth errors are mapped to translated reasons instead of raw
-  server text.
+  server text. The Account tab carries the **Sign in** and **Create account** buttons, and a signed-in
+  shopper gets an **Edit profile** route (`/profile`) for the display name, phone and city stored in
+  `public.koo_profiles`; checkout uses those values instead of the sample address.
 - **Buyer ↔ seller chat** — real conversations stored in Supabase (conversations + messages), secured by
   row-level security, with new messages delivered live through Supabase Realtime. Opening a chat from a
   product page creates or reuses the conversation for that seller.
@@ -31,12 +34,12 @@ catalogue and local storage, and the Supabase-backed screens report why they are
 ## Project layout
 
 ```
-src/app/              expo-router screens (tabs, product, chat, checkout, orders, login, settings)
+src/app/              expo-router screens (tabs, product, chat, checkout, orders, login, profile, settings)
 src/components/       reusable UI pieces (Screen, Button, Field, ProductCard, AuthForm, ...)
 src/context/         AuthContext and CartContext providers
 src/data/catalog.ts   seeded catalogue data and categories
 src/i18n/             LanguageProvider, dictionaries (en, my), device-language helpers
-src/lib/              supabase client, chat data layer, orders persistence, formatting
+src/lib/              supabase client, chat + profile data layers, orders persistence, formatting
 src/theme.ts          colours, spacing, typography tokens
 assets/               icons, splash art, product photography
 supabase/             SQL schema to paste into the Supabase dashboard
@@ -68,17 +71,25 @@ requires restarting the bundler or rebuilding — a running dev server keeps the
 
 ### Database
 
-`supabase/koo-chat-schema.sql` is additive (it only creates `koo_conversations`, `koo_messages`, helper
-functions, triggers, RLS policies and the Realtime publication) and idempotent. Paste it into the Supabase
-SQL editor and run it there, then enable the **Email** auth provider (turn "Confirm email" off for testing)
-and verify:
+Both SQL files are additive and idempotent — they only create tables, helper functions, triggers and
+policies, and never touch existing rows. Paste each one into the Supabase SQL editor and run it there
+(the app never executes DDL with a publishable key), then enable the **Email** auth provider (turn
+"Confirm email" off for testing) and verify:
 
 ```bash
 npm run check:supabase   # connectivity: auth, rest, storage
-npm run check:chat       # the two chat tables exist and answer
+npm run check:chat       # koo_conversations + koo_messages exist and answer
+npm run check:profile    # koo_profiles exists and answers
 ```
 
-Both scripts print masked status lines only — they never echo key values.
+- `supabase/koo-chat-schema.sql` creates `koo_conversations`, `koo_messages`, their RLS policies and the
+  Realtime publication.
+- `supabase/koo-profile-schema.sql` creates `koo_profiles` (one row per `auth.users`, keyed by the same
+  uuid), a trigger that fills that row in when someone registers, a back-fill for accounts created before
+  the trigger existed, and RLS so a user can read and update only their own row. Until it has been run, the
+  app still signs people in — the profile screens just say the table is missing instead of inventing data.
+
+All three scripts print masked status lines only — they never echo key values.
 
 ## npm scripts
 
@@ -91,7 +102,8 @@ Both scripts print masked status lines only — they never echo key values.
 | `npm run lint` | Expo flat ESLint config over `src` |
 | `npm run check:supabase` | Verify Supabase reachability |
 | `npm run check:chat` | Same, plus assert the chat tables exist |
-| `npm run export:web` | Static web build into `dist/` |
+| `npm run check:profile` | Same, plus assert `koo_profiles` exists |
+| `npm run export:web` | Static web build into `dist/`, then write its SPA fallback files |
 | `npm run serve:web` | Serve `dist/` with an SPA fallback (`--port 5000` to move it) |
 
 `bash scripts/build-apk.sh` produces a release APK with a local Android toolchain (Gradle 9.4.1, JDK 17,
@@ -101,26 +113,29 @@ it; the script header documents the repairs it applies and the OneDrive/antiviru
 ## Web build
 
 ```bash
-npx expo export --platform web   # static site written to dist/
-npm run serve:web                # preview it at http://localhost:8081
+npm run export:web             # static site written to dist/ (+ _redirects and 404.html)
+npm run serve:web              # preview it at http://localhost:8081
 ```
 
-The export is a self-contained static site: one pre-rendered HTML file per route (18 of them, including
-`index.html`, `cart.html`, `search.html`, `login.html`, `settings.html` and the chat/order/product screens)
-plus hashed JS bundles under `_expo/static/js/web/` and every image and font under `assets/`. Serve `dist/`
-from any static host — Netlify, Vercel, Cloudflare Pages, S3, GitHub Pages, or a plain nginx `root`.
+The export is a self-contained static site: one pre-rendered HTML file per route (19 of them, including
+`index.html`, `cart.html`, `search.html`, `login.html`, `register.html`, `profile.html`, `settings.html`
+and the chat/order/product screens) plus hashed JS bundles under `_expo/static/js/web/` and every image and
+font under `assets/`. Serve `dist/` from any static host — Netlify, Vercel, Cloudflare Pages, S3, GitHub
+Pages, or a plain nginx `root`.
 
 `dist/` is committed to this repository on purpose, so the site can be served straight from the checkout
-(choose `main` / `dist` as the GitHub Pages source). Regenerate it with `npm run export:web` and commit the
-result in the same change as the code it came from.
+(GitHub Pages: choose `main` / `dist` as the source; Cloudflare Pages: point the project at this repo with
+an empty build command and output directory `dist`, so each push to `main` is also the deploy). Regenerate
+it with `npm run export:web` and commit the result in the same change as the code it came from.
 
 Two hosting rules:
 
-- The app navigates client-side, so unknown paths must fall back to `index.html`. Without that, refreshing on
-  `/product/<id>` returns 404 (the pre-rendered file for a dynamic route only exists for its literal
-  `[id]` form). `scripts/serve-web.mjs` does this locally; on Netlify add a `_redirects` file with
-  `/* /index.html 200`, on Vercel a `rewrites` rule, on Cloudflare Pages a 404 handler, on S3+CloudFront a
-  custom 404 response pointing at `/index.html`.
+- The app navigates client-side, so unknown paths must fall back to `index.html`. Without that, refreshing
+  on `/product/<id>` or `/profile` returns 404 — the pre-rendered file for a dynamic route only exists for
+  its literal `[id]` form. `scripts/post-export-web.mjs` writes `dist/_redirects` (`/* /index.html 200`,
+  read by Cloudflare Pages and Netlify) and `dist/404.html` (the GitHub Pages hook) as part of
+  `npm run export:web`; `scripts/serve-web.mjs` does the same thing locally. On Vercel add a `rewrites`
+  rule, on S3+CloudFront a custom 404 response pointing at `/index.html`.
 - `EXPO_PUBLIC_*` values are baked into the bundles at export time, so the web build carries the same
   publishable key as the APK. Re-export after changing `.env`.
 
@@ -130,8 +145,11 @@ Two hosting rules:
   production release needs a real keystore and Play App Signing before distribution.
 - **Chat** — requires the SQL schema above plus a configured `.env`; without them the chat screens explain
   the missing step rather than failing.
-- **Catalogue** — product data is seeded locally in `src/data/catalog.ts`; it is not (yet) read from the
-  database.
+- **Profiles** — the name, phone and city live in `koo_profiles`, so the same "run the SQL first" rule
+  applies. Until it does, the header falls back to a readable guess from the email local part and says so.
+- **Demo data** — the catalogue (`src/data/catalog.ts`) is seeded locally, and the Account tab's order list
+  shows sample orders to visitors with a **Demo** tag. Placed orders and profile values are real; signed-in
+  shoppers see only what they actually ordered on that device.
 - **iOS** — needs a Mac; `android/` and `ios/` are generated by Expo CNG and are git-ignored.
 
 ## License

@@ -169,7 +169,10 @@ function authErrorReason(error: { code?: string; message?: string } | null): Aut
   if (is('email_not_confirmed', 'not confirmed')) return 'emailNotConfirmed';
   if (is('user_already_exists', 'already registered', 'email_taken')) return 'emailTaken';
   if (is('weak_password')) return 'weakPassword';
-  if (is('invalid_email')) return 'invalidEmail';
+  // GoTrue calls this code `email_address_invalid` (confirmed against a live
+  // project), which is not the substring `invalid_email` — missing it turned a
+  // plain "that address is not valid" into the generic unknown error.
+  if (is('invalid_email', 'email_address_invalid')) return 'invalidEmail';
   if (is('over_request_limit', 'rate_limit', 'too many requests', '429')) return 'rateLimited';
   if (is('network request failed', 'failed to fetch', 'network_error', 'timeout')) return 'offline';
   return 'unknown';

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getProduct, pastOrders, type OrderSummary } from '@/data/catalog';
 import type { DateCopy, Dictionary } from '@/i18n';
+import type { KooProfile } from '@/lib/profile';
 import { offsetDate } from '@/lib/format';
 
 const ORDERS_KEY = 'koo.orders.v1';
@@ -57,6 +58,23 @@ export function defaultAddress(): Address {
     line1: '14 Fulan Street, Ikoyi',
     city: 'Lagos',
     phone: '+234 800 555 0113',
+  };
+}
+
+/**
+ * The address a signed-in shopper checks out with: the name, city and phone saved
+ * in `koo_profiles`.
+ *
+ * `line1` stays empty on purpose. No screen in KOO collects a street, so showing
+ * the sample street above a real Yangon name would invent a delivery point. The
+ * checkout card only prints the lines it actually has.
+ */
+export function addressFromProfile(profile: KooProfile | null, displayName: string): Address {
+  return {
+    fullName: displayName,
+    line1: '',
+    city: profile?.city ?? '',
+    phone: profile?.phone ?? '',
   };
 }
 

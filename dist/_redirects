@@ -1,0 +1,2 @@
+# SPA fallback: let the app route anything the export did not pre-render.
+/*    /index.html   200

@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { InfoRow, Tag } from '@/components/Bits';
+import { Button } from '@/components/Button';
+import { EmptyState, SectionHeader } from '@/components/Filters';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { SectionHeader } from '@/components/Filters';
 import { Screen, ScreenHeader } from '@/components/Screen';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -14,13 +15,8 @@ import { localizeHeadline, localizeStatus, useI18n, type Dictionary } from '@/i1
 import { listConversations } from '@/lib/chat';
 import { formatDate, formatPrice } from '@/lib/format';
 import { listOrders, orderHeadline, summaryFromOrder, type PlacedOrder } from '@/lib/orders';
+import { displayNameFor } from '@/lib/profile';
 import { colors, radius, spacing, typography } from '@/theme';
-
-const profile = {
-  name: 'Ada Okonkwo',
-  email: 'ada@koo.market',
-  memberSince: '2024-03-11',
-};
 
 function initials(name: string): string {
   return name
@@ -32,15 +28,6 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-/**
- * Supabase accounts only carry an email address, so the readable part of it
- * becomes the display name — `soundlab@sellers.koo.market` reads as "soundlab".
- */
-function nameFromEmail(email: string): string {
-  const local = email.split('@')[0] ?? '';
-  return local.replace(/[._-]+/g, ' ').trim() || email;
-}
-
 const statusTone: Record<OrderSummary['status'], 'success' | 'brand' | 'neutral'> = {
   Delivered: 'success',
   'In transit': 'brand',
@@ -49,7 +36,7 @@ const statusTone: Record<OrderSummary['status'], 'success' | 'brand' | 'neutral'
 
 export default function AccountScreen() {
   const { totals } = useCart();
-  const { configured, signOut, status, user } = useAuth();
+  const { configured, profile, profileReason, signOut, status, user } = useAuth();
   const { t, lang, isDeviceDefault, deviceLang } = useI18n();
   const [placed, setPlaced] = useState<PlacedOrder[]>([]);
   /** Thread count tagged with the account it belongs to, so signing out or switching
@@ -81,11 +68,21 @@ export default function AccountScreen() {
 
   const signedIn = status === 'signedIn' && Boolean(user);
   const threadCount = signedIn && threads && user && threads.userId === user.id ? threads.count : null;
-  const displayName = user ? nameFromEmail(user.email) : t.account.signedOutTitle;
-  const displayEmail = user ? user.email : t.account.signedOutHint;
+  const displayName = signedIn ? displayNameFor(profile, user) : t.account.signedOutTitle;
+  const displayEmail = signedIn ? profile?.email || user?.email || '' : t.account.signedOutHint;
+  /** Only real join dates: the row's own `created_at`, written by Supabase. */
+  const memberSince = signedIn && profile ? formatDate(profile.createdAt, t.dates) : null;
 
   const placedSummaries = useMemo(() => placed.map((order) => summaryFromOrder(order, t)), [placed, t]);
-  const orderHistory = useMemo(() => [...placedSummaries, ...pastOrders], [placedSummaries]);
+  /**
+   * Signed-in shoppers see only orders they actually placed on this device.
+   * The seeded list is a storefront preview for visitors, so it stays visible but
+   * is labelled as demo data instead of pretending to be a history.
+   */
+  const orderHistory = useMemo(
+    () => (signedIn ? placedSummaries : [...placedSummaries, ...pastOrders]),
+    [signedIn, placedSummaries]
+  );
   const placedIds = useMemo(() => new Set(placed.map((order) => order.id)), [placed]);
 
   return (
@@ -104,76 +101,132 @@ export default function AccountScreen() {
           <Text style={styles.profileName}>{displayName}</Text>
           <Text style={styles.profileEmail}>{displayEmail}</Text>
           {signedIn ? (
-            <Pressable
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={() => void signOut()}
-              style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed]}>
-              <Ionicons color={colors.muted} name="log-out-outline" size={15} />
-              <Text style={styles.signOutText}>{t.auth.signOut}</Text>
-            </Pressable>
-          ) : (
             <View style={styles.badgeRow}>
-              <Tag icon="ribbon-outline" label={t.account.plusMember} tone="brand" />
+              <Link asChild href="/profile">
+                <Pressable accessibilityRole="button" hitSlop={8} style={({ pressed }) => [styles.editRow, pressed && styles.pressed]}>
+                  <Ionicons color={colors.brandDark} name="person-circle-outline" size={15} />
+                  <Text style={styles.editRowText}>{t.account.editProfile}</Text>
+                </Pressable>
+              </Link>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => void signOut()}
+                style={({ pressed }) => [styles.signOutRow, pressed && styles.pressed]}>
+                <Ionicons color={colors.muted} name="log-out-outline" size={15} />
+                <Text style={styles.signOutText}>{t.auth.signOut}</Text>
+              </Pressable>
             </View>
-          )}
+          ) : null}
         </View>
       </View>
 
+      {signedIn && memberSince ? (
+        <Text style={styles.joined}>{t.account.memberSince(memberSince)}</Text>
+      ) : null}
+
+      {/* A profile the app could not read is worth saying out loud: without the
+          `koo_profiles` table the card silently falls back to the email local
+          part, which looks like invented data. */}
+      {signedIn && profileReason ? (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>
+            {profileReason === 'missingTables'
+              ? t.account.profileMissingTables
+              : profileReason === 'offline'
+                ? t.account.profileOffline
+                : t.account.profileFailed}
+          </Text>
+        </View>
+      ) : null}
+
+      {signedIn ? null : (
+        <View style={styles.authCard}>
+          <Text style={styles.authTitle}>{t.account.signInTitle}</Text>
+          <Text style={styles.authBody}>{t.account.signInBody}</Text>
+          <Button
+            label={t.auth.signInCta}
+            onPress={() => router.push('/login')}
+            testID="account-sign-in"
+            disabled={!configured}
+          />
+          <Button
+            label={t.auth.signUpCta}
+            onPress={() => router.push('/register')}
+            testID="account-sign-up"
+            variant="secondary"
+            disabled={!configured}
+          />
+          {configured ? null : <Text style={styles.authNote}>{t.account.authUnavailable}</Text>}
+        </View>
+      )}
+
+      {/* Every number here is measured, not seeded: orders actually placed on this
+          device, the real cart size, and the live thread count once it loads. */}
       <View style={styles.statsRow}>
-        <Stat label={t.account.stat.orders} value={String(orderHistory.length)} />
+        <Stat label={t.account.stat.orders} value={String(placed.length)} />
         <Stat label={t.account.stat.inCart} value={String(totals.itemCount)} />
-        <Stat label={t.account.stat.saved} value="7" />
-        <Stat label={t.account.stat.vouchers} value="3" />
+        <Stat label={t.account.stat.messages} value={threadCount === null ? '—' : String(threadCount)} />
       </View>
 
       <SectionHeader
         action={
-          <Link href="/search" asChild>
-            <Pressable hitSlop={8}>
-              <Text style={styles.seeAll}>{t.account.browseCatalog}</Text>
-            </Pressable>
-          </Link>
+          <View style={styles.orderActions}>
+            {signedIn ? null : <Tag label={t.account.demoTag} tone="neutral" />}
+            <Link href="/search" asChild>
+              <Pressable hitSlop={8}>
+                <Text style={styles.seeAll}>{t.account.browseCatalog}</Text>
+              </Pressable>
+            </Link>
+          </View>
         }
         title={t.account.recentOrders}
       />
 
-      <View style={styles.ordersCard}>
-        {orderHistory.slice(0, 5).map((order, index) => {
-          const isTrackable = placedIds.has(order.id);
-          const headline =
-            (isTrackable ? orderHeadlineFromPlaced(placed, order.id, t) : undefined) ??
-            localizeHeadline(order.headline, t);
-          const inner = (
-            <View key={order.id} style={[styles.orderRow, index > 0 && styles.orderRowBorder]}>
-              <View style={styles.orderHead}>
-                <Text style={styles.orderId}>{order.id}</Text>
-                <Tag label={localizeStatus(order.status, t)} tone={statusTone[order.status]} />
-              </View>
-              <Text numberOfLines={1} style={styles.orderHeadline}>
-                {headline}
-              </Text>
-              <View style={styles.orderFoot}>
-                <Text style={styles.orderMeta}>
-                  {t.account.orderMeta(formatDate(order.placedAt, t.dates), order.items)}
+      {orderHistory.length === 0 ? (
+        <EmptyState
+          body={t.account.ordersEmptyBody}
+          icon="receipt-outline"
+          title={t.account.ordersEmptyTitle}
+        />
+      ) : (
+        <View style={styles.ordersCard}>
+          {orderHistory.slice(0, 5).map((order, index) => {
+            const isTrackable = placedIds.has(order.id);
+            const headline =
+              (isTrackable ? orderHeadlineFromPlaced(placed, order.id, t) : undefined) ??
+              localizeHeadline(order.headline, t);
+            const inner = (
+              <View key={order.id} style={[styles.orderRow, index > 0 && styles.orderRowBorder]}>
+                <View style={styles.orderHead}>
+                  <Text style={styles.orderId}>{order.id}</Text>
+                  <Tag label={localizeStatus(order.status, t)} tone={statusTone[order.status]} />
+                </View>
+                <Text numberOfLines={1} style={styles.orderHeadline}>
+                  {headline}
                 </Text>
-                <Text style={styles.orderTotal}>{formatPrice(order.totalCents)}</Text>
+                <View style={styles.orderFoot}>
+                  <Text style={styles.orderMeta}>
+                    {t.account.orderMeta(formatDate(order.placedAt, t.dates), order.items)}
+                  </Text>
+                  <Text style={styles.orderTotal}>{formatPrice(order.totalCents)}</Text>
+                </View>
+                {isTrackable ? (
+                  <Text style={styles.orderCta}>{t.account.trackOrder}</Text>
+                ) : null}
               </View>
-              {isTrackable ? (
-                <Text style={styles.orderCta}>{t.account.trackOrder}</Text>
-              ) : null}
-            </View>
-          );
+            );
 
-          if (!isTrackable) return inner;
+            if (!isTrackable) return inner;
 
-          return (
-            <Link key={order.id} asChild href={{ params: { id: order.id }, pathname: '/order/[id]' }}>
-              <Pressable android_ripple={{ color: 'rgba(11,17,32,0.05)' }}>{inner}</Pressable>
-            </Link>
-          );
-        })}
-      </View>
+            return (
+              <Link key={order.id} asChild href={{ params: { id: order.id }, pathname: '/order/[id]' }}>
+                <Pressable android_ripple={{ color: 'rgba(11,17,32,0.05)' }}>{inner}</Pressable>
+              </Link>
+            );
+          })}
+        </View>
+      )}
 
       <SectionHeader title={t.settings.languageSection} />
       <View style={styles.settingsCard}>
@@ -210,18 +263,33 @@ export default function AccountScreen() {
             />
           </Pressable>
         </Link>
-        <InfoRow
-          icon="location-outline"
-          subtitle={t.account.addressSubtitle(t.home.locationCity)}
-          title={t.checkout.deliveryAddress}
-        />
+        {/* Delivery details now come from the saved profile, so this row goes to
+            the same form instead of quoting a seeded address. */}
+        {signedIn ? (
+          <Link asChild href="/profile">
+            <Pressable android_ripple={{ color: 'rgba(11,17,32,0.06)' }}>
+              <InfoRow
+                icon="location-outline"
+                subtitle={profile?.city || t.account.addressMissing}
+                title={t.checkout.deliveryAddress}
+                trailing={t.common.edit}
+              />
+            </Pressable>
+          </Link>
+        ) : (
+          <InfoRow
+            icon="location-outline"
+            subtitle={t.account.signInToSave}
+            title={t.checkout.deliveryAddress}
+          />
+        )}
         <InfoRow
           icon="card-outline"
           subtitle={t.account.paymentSubtitle}
           title={t.account.paymentMethodsTitle}
         />
-        <InfoRow icon="notifications-outline" subtitle={t.account.notificationsSubtitle} title={t.account.notificationsTitle} />
-        <InfoRow icon="shield-checkmark-outline" subtitle={t.account.privacySubtitle} title={t.account.privacyTitle} />
+        <InfoRow icon="notifications-outline" title={t.account.notificationsTitle} />
+        <InfoRow icon="shield-checkmark-outline" title={t.account.privacyTitle} />
         <InfoRow icon="help-circle-outline" title={t.account.helpCentre} />
         <Link asChild href="/settings">
           <Pressable android_ripple={{ color: 'rgba(11,17,32,0.06)' }}>
@@ -229,10 +297,6 @@ export default function AccountScreen() {
           </Pressable>
         </Link>
       </View>
-
-      {signedIn ? null : (
-        <Text style={styles.joined}>{t.account.memberSince(formatDate(profile.memberSince, t.dates))}</Text>
-      )}
     </Screen>
   );
 }
@@ -278,6 +342,31 @@ const styles = StyleSheet.create({
   signOutRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.xs, alignSelf: 'flex-start', paddingVertical: 2 },
   signOutText: { ...typography.caption, color: colors.brandDark, fontWeight: '700' },
   pressed: { opacity: 0.7 },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 2 },
+  editRowText: { ...typography.caption, color: colors.brandDark, fontWeight: '700' },
+  notice: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+    borderRadius: radius.md,
+    borderStyle: 'solid',
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+  },
+  noticeText: { ...typography.caption, color: '#7C2D12' },
+  authCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.lg,
+  },
+  authTitle: { ...typography.subtitle, fontSize: 16 },
+  authBody: { ...typography.caption, marginBottom: spacing.xs },
+  authNote: { ...typography.tiny, textAlign: 'center' },
+  orderActions: { alignItems: 'flex-end', gap: 4 },
   statsRow: { flexDirection: 'row', marginTop: spacing.md, gap: spacing.sm },
   stat: {
     flex: 1,
@@ -324,5 +413,5 @@ const styles = StyleSheet.create({
   languageTitle: { ...typography.bodyStrong },
   languageNote: { ...typography.caption, marginTop: 2 },
   languageSwitch: { paddingBottom: spacing.md },
-  joined: { ...typography.tiny, textAlign: 'center', marginTop: spacing.xl },
+  joined: { ...typography.tiny, marginTop: spacing.sm },
 });

@@ -64,6 +64,7 @@ export const en = {
     goBack: 'Go back',
     option: 'Option',
     bullet: ' · ',
+    edit: 'Edit',
   },
 
   plural: {
@@ -183,6 +184,8 @@ export const en = {
     title: 'Checkout',
     subtitle: (lines: number) => `${lines} ${lineWord(lines)} · secure KOO pay`,
     deliveryAddress: 'Delivery address',
+    addressFromProfile: 'Name, city and phone come from your profile.',
+    addressIncomplete: 'Add your city and phone in your profile so the seller can reach you.',
     deliveryMethod: 'Delivery method',
     payment: 'Payment',
     orderSummary: 'Order summary',
@@ -305,29 +308,73 @@ export const en = {
     title: 'Account',
     signedOutTitle: 'Not signed in yet',
     signedOutHint: 'Sign in to chat with sellers',
-    plusMember: 'KOO Plus member',
+    signInTitle: 'Sign in to KOO',
+    signInBody:
+      'An account keeps your conversations with sellers and saves the name, phone and city used at checkout.',
+    authUnavailable: 'This copy of KOO was built without Supabase details, so signing in is unavailable.',
+    editProfile: 'Edit profile',
+    profileMissingTables:
+      'Your profile has nowhere to be saved yet — the koo_profiles table has not been created in this database.',
+    profileOffline: 'You look offline, so your profile could not be loaded.',
+    profileFailed: 'Your profile could not be loaded. Your name below comes from your email address.',
     stat: {
       orders: 'Orders',
       inCart: 'In cart',
-      saved: 'Saved',
-      vouchers: 'Vouchers',
+      messages: 'Messages',
     },
     recentOrders: 'Recent orders',
     browseCatalog: 'Browse catalog',
+    demoTag: 'Demo',
+    ordersEmptyTitle: 'No orders yet',
+    ordersEmptyBody: 'Anything you place from this app is saved on your device and shows up here.',
     trackOrder: 'Track order',
     orderMeta: (date: string, items: number) => `${date} · ${items} ${itemWord(items)}`,
     preferences: 'Preferences',
     memberSince: (date: string) => `Member since ${date}`,
-    addressSubtitle: (city: string) => `${city} · default`,
+    addressMissing: 'No city saved yet',
+    signInToSave: 'Sign in to save your own address',
     paymentMethodsTitle: 'Payment methods',
-    paymentSubtitle: 'Visa ending 4412 · KOO Wallet',
+    paymentSubtitle: 'Wallet, card or pay on delivery — chosen at checkout',
     notificationsTitle: 'Notifications',
-    notificationsSubtitle: 'Order updates and price drops',
     privacyTitle: 'Privacy and security',
-    privacySubtitle: 'Face unlock enabled',
     helpCentre: 'Help centre',
     languageTitle: 'Language',
     languageDevice: 'Device default',
+  },
+
+  /**
+   * The account form writes `public.koo_profiles` through Supabase. Length limits
+   * mirror the schema's `char_length` checks, so the screen refuses what the
+   * database would refuse.
+   */
+  profile: {
+    title: 'Your profile',
+    subtitle: 'Sellers see this; checkout uses it',
+    loading: 'Loading your profile…',
+    emailLabel: 'Email',
+    emailNote: 'Your email is your sign-in and cannot be changed here.',
+    nameLabel: 'Display name',
+    namePlaceholder: 'e.g. Thiri Aung',
+    phoneLabel: 'Phone',
+    phonePlaceholder: 'e.g. +95 9 123 4567',
+    cityLabel: 'City',
+    cityPlaceholder: 'e.g. Yangon',
+    save: 'Save profile',
+    savedAt: (date: string) => `Last saved ${date}`,
+    saved: 'Saved',
+    notSignedInTitle: 'Sign in to edit your profile',
+    notSignedInBody: 'A profile belongs to a KOO account, so there is nothing to change until you sign in.',
+    missingTables:
+      'This database has no koo_profiles table yet, so the profile cannot be saved. Run supabase/koo-profile-schema.sql in the SQL editor.',
+    offline: 'You look offline — reconnect and try saving again.',
+    forbidden: 'The database refused to save this profile. Check its row-level security policies.',
+    failed: 'The profile could not be saved. Try again in a moment.',
+    retry: 'Try again',
+    noRowYet: 'Nothing is saved for this account yet — the first save creates your profile row.',
+    validation: {
+      nameRequired: 'Enter a display name.',
+      tooLong: (max: number) => `Use ${max} characters or fewer.`,
+    },
   },
 
   settings: {

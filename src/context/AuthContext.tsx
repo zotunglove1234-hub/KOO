@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { fetchProfile, saveProfile as persistProfile, type KooProfile, type ProfileErrorCode, type ProfilePatch, type ProfileResult } from '@/lib/profile';
 import {
   getCurrentUser,
   isSupabaseConfigured,
@@ -34,9 +35,21 @@ type AuthContextValue = {
   configured: boolean;
   /** Secret-free, technical explanation of why `configured` is false. */
   configDetail: string | null;
+  /**
+   * The signed-in user's `koo_profiles` row, or null while signed out, before it
+   * has been read, and whenever the read failed. Screens must not present a
+   * fallback as if it were saved data — check `profileReason` instead.
+   */
+  profile: KooProfile | null;
+  /** Why the profile is unavailable; null when it loaded (or there is nothing to load). */
+  profileReason: ProfileErrorCode | null;
+  /** True once the profile read has settled, so the Account screen can stop showing a spinner. */
+  profileSettled: boolean;
   signIn: (email: string, password: string) => Promise<SignInResult>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  saveProfile: (patch: ProfilePatch) => Promise<ProfileResult<KooProfile>>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -47,6 +60,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<KooUser | null>(null);
   // With no Supabase to talk to there is nothing to restore: start already resolved.
   const [checking, setChecking] = useState(!configured);
+  const [profile, setProfile] = useState<KooProfile | null>(null);
+  const [profileReason, setProfileReason] = useState<ProfileErrorCode | null>(null);
+  const [profileSettled, setProfileSettled] = useState(!configured);
+
+  /**
+   * `koo_profiles` follows the session: it is read whenever the signed-in user
+   * changes, and a failure is remembered as a reason key instead of throwing.
+   *
+   * Every state update runs inside the `.then()`, including the signed-out case,
+   * because `fetchProfile` cannot be called without a user; that also keeps the
+   * effect from setting state synchronously.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const request: Promise<ProfileResult<KooProfile | null>> = user
+      ? fetchProfile(user)
+      : Promise.resolve({ ok: true, data: null });
+
+    request.then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setProfile(result.data);
+        setProfileReason(null);
+      } else {
+        setProfile(null);
+        setProfileReason(result.reason);
+      }
+      setProfileSettled(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!configured) return;
@@ -107,17 +155,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    if (!user) {
+      setProfile(null);
+      setProfileReason(null);
+      setProfileSettled(true);
+      return;
+    }
+    const result = await fetchProfile(user);
+    if (result.ok) {
+      setProfile(result.data);
+      setProfileReason(null);
+    } else {
+      setProfile(null);
+      setProfileReason(result.reason);
+    }
+    setProfileSettled(true);
+  }, [user]);
+
+  const saveProfile = useCallback(
+    async (patch: ProfilePatch): Promise<ProfileResult<KooProfile>> => {
+      const result = await persistProfile(user, patch);
+      // Only a saved row is shown as saved; a refused write leaves the last
+      // known profile alone and the screen reports the reason.
+      if (result.ok) {
+        setProfile(result.data);
+        setProfileReason(null);
+        setProfileSettled(true);
+      }
+      return result;
+    },
+    [user]
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status: checking ? 'checking' : user ? 'signedIn' : 'signedOut',
       user,
       configured,
       configDetail: configured ? null : supabaseConfigError(),
+      profile,
+      profileReason,
+      profileSettled,
       signIn,
       signUp,
       signOut,
+      refreshProfile,
+      saveProfile,
     }),
-    [checking, user, configured, signIn, signUp, signOut]
+    [checking, user, configured, profile, profileReason, profileSettled, signIn, signUp, signOut, refreshProfile, saveProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -33,6 +33,9 @@ export default function RootLayout() {
               <Stack.Screen name="checkout" options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="order/[id]" options={{ animation: 'fade' }} />
               <Stack.Screen name="settings" />
+              {/* The account form is a stack screen, not a tab: it only means
+                  something once there is a session to edit. */}
+              <Stack.Screen name="profile" />
               {/* Auth and messaging: pushed modally-ish over the storefront, so a
                   sign-in never replaces the page the user came from. */}
               <Stack.Screen name="login" />
